@@ -1,15 +1,5 @@
-module.exports =
 /******/ (() => { // webpackBootstrap
 /******/ 	var __webpack_modules__ = ({
-
-/***/ 589:
-/***/ ((__unused_webpack_module, __unused_webpack_exports, __webpack_require__) => {
-
-const { clean } = __webpack_require__(909);
-clean();
-
-
-/***/ }),
 
 /***/ 532:
 /***/ ((module) => {
@@ -25,109 +15,26 @@ module.exports = {
 /***/ }),
 
 /***/ 909:
-/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 // @format
-const core = __webpack_require__(186);
-const fetch = __webpack_require__(805);
-const isPortReachable = __webpack_require__(157);
-const { periodicExecution, TimeoutError } = __webpack_require__(660);
-const process = __webpack_require__(765);
+const core = __nccwpck_require__(186);
+const fetch = __nccwpck_require__(805);
+const isPortReachable = __nccwpck_require__(157);
+const { periodicExecution, TimeoutError } = __nccwpck_require__(660);
+const process = __nccwpck_require__(282);
 
-const config = __webpack_require__(532);
+const config = __nccwpck_require__(532);
 
 // TODO: Move within each function
 const options = {
-  server: {
-    name: core.getInput("server-name"),
-    image: core.getInput("server-image"),
-    type: core.getInput("server-type"),
-    location: core.getInput("server-location")
-  },
-  sshKeyName: core.getInput("ssh-key-name"),
   hcloudToken: core.getInput("hcloud-token"),
   timeout: core.getInput("startup-timeout")
 };
 
-async function deploy() {
+async function deleteServer(server_id) {
   let res;
-  try {
-    res = await fetch(`${config.API}/servers`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${options.hcloudToken}`,
-        "User-Agent": config.USER_AGENT
-      },
-      body: JSON.stringify({
-        name: options.server.name,
-        image: options.server.image,
-        location: options.server.location,
-        server_type: options.server.type,
-        ssh_keys: [options.sshKeyName]
-      })
-    });
-  } catch (err) {
-    core.setFailed(err.message);
-  }
-
-  if (res.status === 201) {
-    core.info("Hetzner Cloud Server deployment successful");
-    const body = await res.json();
-    // NOTE: We set the SERVER_ID optimistically as we definitely want to still
-    // delete the server if our periodic request fails.
-    const ipv4 = body.server.public_net.ipv4.ip;
-    core.exportVariable("SERVER_ID", body.server.id);
-    core.exportVariable("SERVER_IPV4", ipv4);
-
-    const fn = () => {
-      core.debug(
-        `Trying to connect to server on default port "${config.DEFAULT_PORT}"`
-      );
-      return isPortReachable(config.DEFAULT_PORT, {
-        host: ipv4
-      });
-    };
-
-    let online;
-    try {
-      online = await periodicExecution(fn, true, options.timeout);
-    } catch (err) {
-      core.error(err.toString());
-      if (err instanceof TimeoutError) {
-        online = false;
-      } else {
-        throw err;
-      }
-    }
-
-    if (online) {
-      return res;
-    } else {
-      core.setFailed(
-        `Waited ${
-          options.timeout
-        }ms for server to come online, but it never came online. Value: "${online}"`
-      );
-    }
-  } else {
-    core.setFailed(
-      `When sending the request to Hetzner's API, an error occurred "${
-        res.statusText
-      }"`
-    );
-  }
-}
-
-async function clean() {
-  const deleteServer = core.getInput("delete-server") === "true";
-  if (!deleteServer) {
-    core.warning("Aborted post cleaning procedure with delete-server: false");
-    return;
-  }
-
-  let res;
-  const URI = `${config.API}/servers/${process.env.SERVER_ID}`;
+  const URI = `${config.API}/servers/${server_id}`;
   try {
     res = await fetch(URI, {
       method: "DELETE",
@@ -142,7 +49,7 @@ async function clean() {
   }
 
   if (res.status === 200) {
-    core.info("Hetzner Cloud Server deleted in clean up routine");
+    core.info("Hetzner Cloud Server deleted");
     return res;
   } else {
     core.setFailed(
@@ -154,43 +61,9 @@ async function clean() {
   }
 }
 
-function getAssignmentProgress(floatingIPId, actionId) {
-  return async () => {
-    const URI = `${
-      config.API
-    }/floating_ips/${floatingIPId}/actions/${actionId}`;
-
-    let res;
-    try {
-      res = await fetch(URI, {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${options.hcloudToken}`,
-          "User-Agent": config.USER_AGENT
-        }
-      });
-    } catch (err) {
-      core.setFailed(err.message);
-    }
-
-    if (res.status === 200) {
-      const body = await res.json();
-      return body.action.status;
-    } else {
-      core.setFailed(
-        `When trying to check on the ip's assignment progress, an error occurred: ${
-          res.status
-        }`
-      );
-      return;
-    }
-  };
-}
-
-async function getFloatingIP(id) {
-  const URI = `${config.API}/floating_ips/${id}`;
-
+async function destroy() {
+  let res;
+  const URI = `${config.API}/servers/`;
   try {
     res = await fetch(URI, {
       method: "GET",
@@ -200,103 +73,33 @@ async function getFloatingIP(id) {
         "User-Agent": config.USER_AGENT
       }
     });
+
+    const body = await res.json();
+
+    if (res.status !== 200) {
+      core.setFailed(
+        `When sending the request to Hetzner's API, an error occurred "${
+          res.statusText
+        }"`
+      );
+      return;
+    }
+
+    for (const server of body.servers) {
+      core.info(`Deleting ${server.name}`);
+      //await deleteServer(server.id);
+    }
+    
   } catch (err) {
     core.setFailed(err.message);
   }
 
   if (res.status === 200) {
-    const body = await res.json();
-    return body.floating_ip.ip;
+    core.info("Hetzner Cloud Server's destroyed");
+    return res;
   } else {
     core.setFailed(
-      `When trying to get a floating ip, an error occurred ${res.status}`
-    );
-    return;
-  }
-}
-
-async function assignIP() {
-  const floatingIPId = core.getInput("floating-ip-id");
-  if (!floatingIPId) {
-    core.warning(
-      "No value for floating-ip-id input was found. Hence skipping this step."
-    );
-    return;
-  }
-
-  const parsedIPId = parseInt(floatingIPId, 10);
-  if (isNaN(parsedIPId)) {
-    core.setFailed(
-      `Not assigning server a floating-ip-id as it asn't parseable as an integer. Unparsed value: ${floatingIPId}`
-    );
-    return;
-  }
-
-  let res;
-  const URI = `${config.API}/floating_ips/${parsedIPId}/actions/assign`;
-  let { SERVER_ID } = process.env;
-  SERVER_ID = parseInt(SERVER_ID, 10);
-
-  try {
-    res = await fetch(URI, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${options.hcloudToken}`,
-        "User-Agent": config.USER_AGENT
-      },
-      body: JSON.stringify({ server: SERVER_ID })
-    });
-  } catch (err) {
-    core.setFailed(err.message);
-  }
-
-  if (res.status === 201) {
-    const body = await res.json();
-    core.info(
-      `Successfully created assignment action for IP "${parsedIPId}" and SERVER_ID "${SERVER_ID}"`
-    );
-
-    const expectedStatus = "success";
-    const assignmentTimeout = parseInt(
-      core.getInput("floating-ip-assignment-timeout"),
-      10
-    );
-    core.info(
-      `Attempting to get the status of the assignment process with expected status: "${expectedStatus}" and timeout: "${assignmentTimeout}"`
-    );
-    let _status;
-    try {
-      _status = await periodicExecution(
-        getAssignmentProgress(parsedIPId, body.action.id),
-        expectedStatus,
-        assignmentTimeout
-      );
-    } catch (err) {
-      core.error(err.toString());
-      if (err instanceof TimeoutError) {
-        _status = "timeout";
-      } else {
-        throw err;
-      }
-    }
-
-    if (_status === "success") {
-      const floatingIP = await getFloatingIP(parsedIPId);
-      core.exportVariable("SERVER_FLOATING_IPV4", floatingIP);
-      core.info(
-        `Floating IP with ID "${parsedIPId}" was assigned to server with id: "${SERVER_ID}"`
-      );
-      return;
-    } else {
-      core.setFailed(
-        `An error happened while trying to get the IP's assignment progress. Status: "${_status}"`
-      );
-      return;
-    }
-  } else {
-    core.setFailed(
-      `When assigning a floating ip to the server an error occurred "${
+      `When sending the request to Hetzner's API, an error occurred "${
         res.statusText
       }"`
     );
@@ -305,18 +108,14 @@ async function assignIP() {
 }
 
 module.exports = {
-  deploy,
-  clean,
-  assignIP,
-  getAssignmentProgress,
-  getFloatingIP
+  destroy,
 };
 
 
 /***/ }),
 
 /***/ 351:
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
@@ -328,8 +127,8 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const os = __importStar(__webpack_require__(87));
-const utils_1 = __webpack_require__(278);
+const os = __importStar(__nccwpck_require__(37));
+const utils_1 = __nccwpck_require__(278);
 /**
  * Commands
  *
@@ -402,7 +201,7 @@ function escapeProperty(s) {
 /***/ }),
 
 /***/ 186:
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
@@ -423,11 +222,11 @@ var __importStar = (this && this.__importStar) || function (mod) {
     return result;
 };
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-const command_1 = __webpack_require__(351);
-const file_command_1 = __webpack_require__(717);
-const utils_1 = __webpack_require__(278);
-const os = __importStar(__webpack_require__(87));
-const path = __importStar(__webpack_require__(622));
+const command_1 = __nccwpck_require__(351);
+const file_command_1 = __nccwpck_require__(717);
+const utils_1 = __nccwpck_require__(278);
+const os = __importStar(__nccwpck_require__(37));
+const path = __importStar(__nccwpck_require__(17));
 /**
  * The code to exit an action
  */
@@ -647,7 +446,7 @@ exports.getState = getState;
 /***/ }),
 
 /***/ 717:
-/***/ (function(__unused_webpack_module, exports, __webpack_require__) {
+/***/ (function(__unused_webpack_module, exports, __nccwpck_require__) {
 
 "use strict";
 
@@ -662,9 +461,9 @@ var __importStar = (this && this.__importStar) || function (mod) {
 Object.defineProperty(exports, "__esModule", ({ value: true }));
 // We use any as a valid input type
 /* eslint-disable @typescript-eslint/no-explicit-any */
-const fs = __importStar(__webpack_require__(747));
-const os = __importStar(__webpack_require__(87));
-const utils_1 = __webpack_require__(278);
+const fs = __importStar(__nccwpck_require__(147));
+const os = __importStar(__nccwpck_require__(37));
+const utils_1 = __nccwpck_require__(278);
 function issueCommand(command, message) {
     const filePath = process.env[`GITHUB_${command}`];
     if (!filePath) {
@@ -709,9 +508,9 @@ exports.toCommandValue = toCommandValue;
 /***/ }),
 
 /***/ 805:
-/***/ ((module, exports, __webpack_require__) => {
+/***/ ((module, exports, __nccwpck_require__) => {
 
-var nodeFetch = __webpack_require__(467)
+var nodeFetch = __nccwpck_require__(467)
 var realFetch = nodeFetch.default || nodeFetch
 
 var fetch = function (url, options) {
@@ -730,17 +529,17 @@ exports.Request = nodeFetch.Request
 exports.Response = nodeFetch.Response
 
 // Needed for TypeScript consumers without esModuleInterop.
-exports.default = fetch
+exports["default"] = fetch
 
 
 /***/ }),
 
 /***/ 157:
-/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 "use strict";
 
-const net = __webpack_require__(631);
+const net = __nccwpck_require__(808);
 
 module.exports = async (port, {timeout = 1000, host} = {}) => {
 	const promise = new Promise(((resolve, reject) => {
@@ -773,7 +572,7 @@ module.exports = async (port, {timeout = 1000, host} = {}) => {
 /***/ }),
 
 /***/ 467:
-/***/ ((module, exports, __webpack_require__) => {
+/***/ ((module, exports, __nccwpck_require__) => {
 
 "use strict";
 
@@ -782,11 +581,11 @@ Object.defineProperty(exports, "__esModule", ({ value: true }));
 
 function _interopDefault (ex) { return (ex && (typeof ex === 'object') && 'default' in ex) ? ex['default'] : ex; }
 
-var Stream = _interopDefault(__webpack_require__(413));
-var http = _interopDefault(__webpack_require__(605));
-var Url = _interopDefault(__webpack_require__(835));
-var https = _interopDefault(__webpack_require__(211));
-var zlib = _interopDefault(__webpack_require__(761));
+var Stream = _interopDefault(__nccwpck_require__(781));
+var http = _interopDefault(__nccwpck_require__(685));
+var Url = _interopDefault(__nccwpck_require__(310));
+var https = _interopDefault(__nccwpck_require__(687));
+var zlib = _interopDefault(__nccwpck_require__(796));
 
 // Based on https://github.com/tmpvar/jsdom/blob/aa85b2abf07766ff7bf5c1f6daafb3726f2f2db5/lib/jsdom/living/blob.js
 
@@ -937,7 +736,7 @@ FetchError.prototype.name = 'FetchError';
 
 let convert;
 try {
-	convert = __webpack_require__(877).convert;
+	convert = (__nccwpck_require__(877).convert);
 } catch (e) {}
 
 const INTERNALS = Symbol('Body internals');
@@ -2420,7 +2219,7 @@ fetch.Promise = global.Promise;
 
 module.exports = exports = fetch;
 Object.defineProperty(exports, "__esModule", ({ value: true }));
-exports.default = exports;
+exports["default"] = exports;
 exports.Headers = Headers;
 exports.Request = Request;
 exports.Response = Response;
@@ -2430,10 +2229,10 @@ exports.FetchError = FetchError;
 /***/ }),
 
 /***/ 660:
-/***/ ((module, __unused_webpack_exports, __webpack_require__) => {
+/***/ ((module, __unused_webpack_exports, __nccwpck_require__) => {
 
 // @format
-const { hrtime } = __webpack_require__(765);
+const { hrtime } = __nccwpck_require__(282);
 
 let defaultOptions = {
   interval: 1000
@@ -2492,83 +2291,83 @@ module.exports = eval("require")("encoding");
 
 /***/ }),
 
-/***/ 747:
+/***/ 147:
 /***/ ((module) => {
 
 "use strict";
-module.exports = require("fs");;
+module.exports = require("fs");
 
 /***/ }),
 
-/***/ 605:
+/***/ 685:
 /***/ ((module) => {
 
 "use strict";
-module.exports = require("http");;
+module.exports = require("http");
 
 /***/ }),
 
-/***/ 211:
+/***/ 687:
 /***/ ((module) => {
 
 "use strict";
-module.exports = require("https");;
+module.exports = require("https");
 
 /***/ }),
 
-/***/ 631:
+/***/ 808:
 /***/ ((module) => {
 
 "use strict";
-module.exports = require("net");;
+module.exports = require("net");
 
 /***/ }),
 
-/***/ 87:
+/***/ 37:
 /***/ ((module) => {
 
 "use strict";
-module.exports = require("os");;
+module.exports = require("os");
 
 /***/ }),
 
-/***/ 622:
+/***/ 17:
 /***/ ((module) => {
 
 "use strict";
-module.exports = require("path");;
+module.exports = require("path");
 
 /***/ }),
 
-/***/ 765:
+/***/ 282:
 /***/ ((module) => {
 
 "use strict";
-module.exports = require("process");;
+module.exports = require("process");
 
 /***/ }),
 
-/***/ 413:
+/***/ 781:
 /***/ ((module) => {
 
 "use strict";
-module.exports = require("stream");;
+module.exports = require("stream");
 
 /***/ }),
 
-/***/ 835:
+/***/ 310:
 /***/ ((module) => {
 
 "use strict";
-module.exports = require("url");;
+module.exports = require("url");
 
 /***/ }),
 
-/***/ 761:
+/***/ 796:
 /***/ ((module) => {
 
 "use strict";
-module.exports = require("zlib");;
+module.exports = require("zlib");
 
 /***/ })
 
@@ -2576,12 +2375,13 @@ module.exports = require("zlib");;
 /************************************************************************/
 /******/ 	// The module cache
 /******/ 	var __webpack_module_cache__ = {};
-/******/
+/******/ 	
 /******/ 	// The require function
-/******/ 	function __webpack_require__(moduleId) {
+/******/ 	function __nccwpck_require__(moduleId) {
 /******/ 		// Check if module is in cache
-/******/ 		if(__webpack_module_cache__[moduleId]) {
-/******/ 			return __webpack_module_cache__[moduleId].exports;
+/******/ 		var cachedModule = __webpack_module_cache__[moduleId];
+/******/ 		if (cachedModule !== undefined) {
+/******/ 			return cachedModule.exports;
 /******/ 		}
 /******/ 		// Create a new module (and put it into the cache)
 /******/ 		var module = __webpack_module_cache__[moduleId] = {
@@ -2589,27 +2389,38 @@ module.exports = require("zlib");;
 /******/ 			// no module.loaded needed
 /******/ 			exports: {}
 /******/ 		};
-/******/
+/******/ 	
 /******/ 		// Execute the module function
 /******/ 		var threw = true;
 /******/ 		try {
-/******/ 			__webpack_modules__[moduleId].call(module.exports, module, module.exports, __webpack_require__);
+/******/ 			__webpack_modules__[moduleId].call(module.exports, module, module.exports, __nccwpck_require__);
 /******/ 			threw = false;
 /******/ 		} finally {
 /******/ 			if(threw) delete __webpack_module_cache__[moduleId];
 /******/ 		}
-/******/
+/******/ 	
 /******/ 		// Return the exports of the module
 /******/ 		return module.exports;
 /******/ 	}
-/******/
+/******/ 	
 /************************************************************************/
 /******/ 	/* webpack/runtime/compat */
-/******/
-/******/ 	__webpack_require__.ab = __dirname + "/";/************************************************************************/
-/******/ 	// module exports must be returned from runtime so entry inlining is disabled
-/******/ 	// startup
-/******/ 	// Load entry module and return exports
-/******/ 	return __webpack_require__(589);
+/******/ 	
+/******/ 	if (typeof __nccwpck_require__ !== 'undefined') __nccwpck_require__.ab = __dirname + "/";
+/******/ 	
+/************************************************************************/
+var __webpack_exports__ = {};
+// This entry need to be wrapped in an IIFE because it need to be isolated against other modules in the chunk.
+(() => {
+// @format
+const { destroy } = __nccwpck_require__(909);
+
+(async () => {
+  await destroy();
+})();
+
+})();
+
+module.exports = __webpack_exports__;
 /******/ })()
 ;

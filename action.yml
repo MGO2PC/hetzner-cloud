@@ -1,42 +1,10 @@
-name: "TimDaub/hetzner-cloud-deploy-server-action"
-description: "Deploy a Hetzner Cloud Server from a GitHub Action"
-author: "Tim Daubenschütz"
+name: "MGO2PC/hetzner-cloud"
+description: "Destroy all servers from a GitHub Action"
+author: "cipherxof"
 inputs:
-  server-name:
-    description: "The name your server should be initiated with."
-    default: "gh-actions-ci-server"
-    required: false
-  server-image:
-    description: "The Operating System image your server should be initiated with."
-    required: true
-  server-type:
-    description: "The Hetzner server type you want your server to be."
-    required: true
-  server-location:
-      description: "The location your server should be initiated in."
-      required: false
-      default: 1
-  ssh-key-name:
-    description: "The ssh key, you want your server to be provisioned with."
-    required: true
   hcloud-token:
     description: "Your Hetzner Cloud API token."
     required: true
-  delete-server:
-    description: "Regulates whether a server should be deleted after the action."
-    required: false
-    default: true
-  startup-timeout:
-    description: "Gives the server some time (in Milliseconds) to boot up before ending the action."
-    required: false
-    default: 40000
-  floating-ip-id:
-    description: "Allows to assign a floating IP to the server after deployment"
-    required: false
-  floating-ip-assignment-timeout:
-    description: "Gives Hetzner some time (in Ms) to assign an IP to a server."
-    required: false
-    default: 60000
 
 runs:
   using: 'node12'
