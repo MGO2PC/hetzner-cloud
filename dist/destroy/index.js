@@ -49,7 +49,7 @@ async function deleteServer(server_id) {
   }
 
   if (res.status === 200) {
-    core.info("Hetzner Cloud Server deleted");
+    //core.info("Hetzner Cloud Server deleted");
     return res;
   } else {
     core.setFailed(
@@ -86,8 +86,8 @@ async function destroy() {
     }
 
     for (const server of body.servers) {
-      core.info(`Deleting ${server.name}`);
-      //await deleteServer(server.id);
+      core.info(`Deleting ${server.name} (#${server.id})`);
+      await deleteServer(server.id);
     }
     
   } catch (err) {
