@@ -67,7 +67,7 @@ async function destroy() {
     }
 
     for (const server of body.servers) {
-      core.info(`Deleting ${server.name}`);
+      core.info(`Deleting ${server.name} (#${server.id})`);
       await deleteServer(server.id);
     }
     
